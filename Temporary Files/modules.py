@@ -212,3 +212,39 @@ def make_OC_diagram(accepted : pd.DataFrame, calculate_from : int = 1):
     df['E'] = df['E'].astype(int)
     df['O-C'] = df['T'] * ( 1 - ( p0 / df['p_'] ) )
     return df[['T', 'E', 'O-C']]
+
+
+def straight_lines(lightcurve : lk.lightcurve.LightCurve, cadence_magnifier : int = 4) -> lk.lightcurve.LightCurve:
+    '''
+    Takes in a lightcurve and fills the gaps with a straight line, furthermore, smoothens the lightcurve with a spline interpolation with a factor of `cadence_magnifier`.
+    Returns a lightcurve
+    '''
+
+    #BASICS
+    flux = np.array(lightcurve.flux, dtype=float)
+    time = np.array(lightcurve.time.jd)
+    cadence_in_days = ((np.median(np.diff(time[:100])) * 86400).round())/86400
+    lc = pd.DataFrame({'time': time, 'flux': flux})
+
+    #PEAKS
+    peaks, _ = signal.find_peaks(np.diff(time), height = cadence_in_days * 10)
+    print(peaks)
+
+    #Filling the Gaps
+    for i in peaks:
+        t = (time[i], time[i+1])
+        f = (flux[i], flux[i+1])
+        df = pd.DataFrame({'time': t, 'flux': f})
+        df.set_index('time', inplace = True)
+        df = df.reindex(np.arange(time[i], time[i+1], cadence_in_days))
+        df['flux'] = df['flux'].interpolate('linear')
+        df.reset_index(inplace = True)
+        df.rename(columns={'index':'time'}, inplace=True)
+        lc = pd.concat([df[1:-1], lc]).sort_values('time')
+
+    time_final = np.array(lc['time'])
+    flux_final = np.array(lc['flux'])
+    time_smooth = np.linspace(time_final.min(), time_final.max(), len(time_final) * cadence_magnifier)
+    flux_smooth = spline(time_final, flux_final, k = 3)(time_smooth)
+
+    return lk.LightCurve( time_smooth , flux_smooth)
