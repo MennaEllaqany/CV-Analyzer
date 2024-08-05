@@ -155,6 +155,7 @@ def reject_outliers(data, m=1):
     plt.figure()
     plt.plot(accepted)
     return accepted
+
 def reject_outliers_pd(data : pd.DataFrame, column_name : str, m=1):
     '''
     Removes the outliers from the data.
@@ -247,4 +248,10 @@ def straight_lines(lightcurve : lk.lightcurve.LightCurve, cadence_magnifier : in
     time_smooth = np.linspace(time_final.min(), time_final.max(), len(time_final) * cadence_magnifier)
     flux_smooth = spline(time_final, flux_final, k = 3)(time_smooth)
 
-    return lk.LightCurve( time_smooth , flux_smooth)
+    # lightcurve.flux, lightcurve.time = flux_smooth, time_smooth
+
+    disposable_lightcurve = lk.LightCurve(time = time_smooth, flux = flux_smooth)
+    disposable_lightcurve.time.format = 'btjd' 
+    disposable_lightcurve.flux.unit = lightcurve.flux.unit
+
+    return disposable_lightcurve
