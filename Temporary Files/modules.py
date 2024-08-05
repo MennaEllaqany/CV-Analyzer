@@ -217,19 +217,21 @@ def make_OC_diagram(accepted : pd.DataFrame, calculate_from : int = 1):
 
 def straight_lines(lightcurve : lk.lightcurve.LightCurve, cadence_magnifier : int = 4) -> lk.lightcurve.LightCurve:
     '''
-    Takes in a lightcurve and fills the gaps with a straight line, furthermore, smoothens the lightcurve with a spline interpolation with a factor of `cadence_magnifier`.
+    Takes in a lightcurve and fills the gaps with a straight line
+    ANDDDDDD smoothens the lightcurve with a spline interpolation with a factor of `cadence_magnifier`.
+
     Returns a lightcurve
     '''
 
     #BASICS
-    flux = np.array(lightcurve.flux, dtype=float)
+    flux = np.array(lightcurve.flux)
     time = np.array(lightcurve.time.jd)
     cadence_in_days = ((np.median(np.diff(time[:100])) * 86400).round())/86400
     lc = pd.DataFrame({'time': time, 'flux': flux})
 
     #PEAKS
     peaks, _ = signal.find_peaks(np.diff(time), height = cadence_in_days * 10)
-    print(peaks)
+    print("The gaps are at time(s):", peaks)
 
     #Filling the Gaps
     for i in peaks:
@@ -252,6 +254,47 @@ def straight_lines(lightcurve : lk.lightcurve.LightCurve, cadence_magnifier : in
 
     disposable_lightcurve = lk.LightCurve(time = time_smooth, flux = flux_smooth)
     disposable_lightcurve.time.format = 'btjd' 
-    disposable_lightcurve.flux.unit = lightcurve.flux.unit
 
     return disposable_lightcurve
+
+
+def get_lightcurves(TIC, use_till = 30, use_from = 0, author = None, cadence = None):
+    '''
+    Returns lightcurves for a set TIC from the TESS database.
+    
+    Parameters:
+    ----------
+    TIC : int
+        The TIC number of the system.
+    use_till : int
+        (default = 30)
+        The number of lightcurves to be used.
+    use_from : int
+        (default = 0)
+        The number of lightcurves to be skipped.
+    author : str
+        (default = None)
+        The authors for the lightcurve. Eg. 'SPOC', 'QLP', etc.
+    cadence : str or float
+        (default = None)
+        The cadence of the lightcurve, used interchangably with exptime. Eg. 'long', 'short', float, etc.
+
+    Returns:
+    --------
+    lcs : list
+        The list of lightcurves.
+    '''
+    search_results = lk.search_lightcurve(TIC, author = author, cadence = cadence)
+    print(search_results)
+
+    use_from = 0
+    use_till = 30
+    lcs = []
+
+    for i in range(use_from, use_till):
+        try:
+            lcs.append(search_results[i].download())
+        except:
+            pass
+
+    return lcs
