@@ -6,18 +6,19 @@ import lightkurve as lk
 from scipy.interpolate import make_interp_spline as spline
 import scipy.signal as signal
 import matplotlib
+from tqdm import tqdm
 
-def apply_savgol_filter(time, flux, window_length_for_remove : int = 7500, mode : str = 'remove', window_length_for_gaussian : int = 100, polyorder = 4, displaygraphs : bool = True) -> pd.DataFrame:
-    '''
+def apply_savgol_filter(time, flux, window_length_for_remove : int = 7500, mode : str = 'remove', window_length_for_gaussian : int = 100, polyorder = 4, displaygraphs : bool = True, want : str = 'df') -> pd.DataFrame:
+    """
     Applies the savgol filter to `flux` and `time`.
 
     Works in two modes:
     - `'remove'`: Removes the outburst and other large features
     - `'gaussian'`: Finds the gaussians, techincally
 
-    Parameters:
+    Parameters
     ----------
-    time : array-like
+    time : array_like
         The time array of the lightcurve
     flux : array-like
         The flux array of the lightcurve
@@ -29,8 +30,15 @@ def apply_savgol_filter(time, flux, window_length_for_remove : int = 7500, mode 
         The window length for the remove filter, works only in `'remove'` mode
     polyorder : int
         The polynomial order for the savgol filter
+    displaygraphs : bool
+        (default = True)
+        Whether to display the graphs or not
+    want : str
+        (default = 'df')
+        Only use for mode `remove`.
+        Whether to return the corrected `lightkurve.LightCurve` or a `pandas.DataFrame` object. Options: 'df', 'lc'
 
-    Returns:
+    Returns
     ----------
     if `mode == 'remove'`:
         returns the corrected lightcurve as a pandas.DataFrame object
@@ -39,7 +47,7 @@ def apply_savgol_filter(time, flux, window_length_for_remove : int = 7500, mode 
         returns the gaussians as a pandas.DataFrame object
         Columns: `'time'` and  `'gaussian_flux'`
 
-    '''
+    """
     if mode == 'remove':  #Removing the outburst and other large features
         flx = signal.savgol_filter(flux, int(window_length_for_remove), polyorder)
         flx2 = signal.savgol_filter(flx, int(window_length_for_remove), polyorder)
@@ -59,10 +67,18 @@ def apply_savgol_filter(time, flux, window_length_for_remove : int = 7500, mode 
             plt.plot(time, flux - flx2, 'b-', lw=0.5)
 
         #Building the lightcurve again, with the correction
-        return pd.DataFrame({
+
+        if want == 'lc':
+            disposable_lightcurve = lk.LightCurve(time=time, flux=flux - flx2)
+            disposable_lightcurve.time.format = 'btjd'
+            return disposable_lightcurve
+        elif want == 'df':
+            pd.DataFrame({
             'time':time,
             'flux':flux - flx2
-        }, index=None)
+            }, index=None)
+        else:
+            raise ValueError("Invalid value for 'want'. Only 'lc' and 'df' are allowed.")
 
     elif mode == 'gaussian':   #Finding the gaussians, techincally
         fit_flux = signal.savgol_filter(flux, int(window_length_for_gaussian), polyorder)
@@ -187,7 +203,7 @@ def make_OC_diagram(accepted : pd.DataFrame, calculate_from : int = 1):
     '''
     Makes the O-C diagram from the accepted data.
 
-    Parameters:
+    Parameters
     ----------
     accepted : pd.DataFrame
         The data from which the O-C diagram is to be made. Must have columns 'time' and 'period'.
@@ -195,10 +211,11 @@ def make_OC_diagram(accepted : pd.DataFrame, calculate_from : int = 1):
         (default = 1)
         The number of periods to calculate the CALCULATED period from.
     
-    Returns:
+    Returns
     --------
     OC_DataFrame : pd.DataFrame
         The O-C diagram data.
+
         Columns:
         - 'T' : Time of the period from the start
         - 'E' : Event Number
@@ -224,17 +241,18 @@ def straight_lines(lightcurve : lk.lightcurve.LightCurve, cadence_magnifier : in
     '''
 
     #BASICS
-    flux = np.array(lightcurve.flux)
-    time = np.array(lightcurve.time.jd)
-    cadence_in_days = ((np.median(np.diff(time[:100])) * 86400).round())/86400
-    lc = pd.DataFrame({'time': time, 'flux': flux})
+    lc = pd.DataFrame({'time': lightcurve.time.jd, 'flux': np.array(lightcurve.flux, dtype='f')})
+    cadence_in_days = ((np.median(np.diff(lc['time'][:100])) * 86400).round())/86400
+    lc.dropna(inplace=True)
+    time = np.array(lc['time'])
+    flux = np.array(lc['flux'])
 
     #PEAKS
     peaks, _ = signal.find_peaks(np.diff(time), height = cadence_in_days * 10)
     print("The gaps are at time(s):", peaks)
 
     #Filling the Gaps
-    for i in peaks:
+    for i in tqdm(peaks):
         t = (time[i], time[i+1])
         f = (flux[i], flux[i+1])
         df = pd.DataFrame({'time': t, 'flux': f})
@@ -262,7 +280,7 @@ def get_lightcurves(TIC, use_till = 30, use_from = 0, author = None, cadence = N
     '''
     Returns lightcurves for a set TIC from the TESS database.
     
-    Parameters:
+    Parameters
     ----------
     TIC : int
         The TIC number of the system.
@@ -279,16 +297,14 @@ def get_lightcurves(TIC, use_till = 30, use_from = 0, author = None, cadence = N
         (default = None)
         The cadence of the lightcurve, used interchangably with exptime. Eg. 'long', 'short', float, etc.
 
-    Returns:
+    Returns
     --------
     lcs : list
         The list of lightcurves.
     '''
     search_results = lk.search_lightcurve(TIC, author = author, cadence = cadence)
-    print(search_results)
+    print(search_results[use_from:use_till])
 
-    use_from = 0
-    use_till = 30
     lcs = []
 
     for i in range(use_from, use_till):
